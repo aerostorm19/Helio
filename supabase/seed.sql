@@ -1,0 +1,34 @@
+-- Seed data for local dev. Run after migrations.
+-- Replace <USER_UUID> with a real auth.users.id before applying.
+
+-- INSERT INTO businesses (
+--   user_id, name, slug, industry, phone, email, address, timezone,
+--   agent_name, greeting_message, escalation_phone,
+--   working_hours, services
+-- ) VALUES (
+--   '<USER_UUID>',
+--   'Demo Salon',
+--   'demo-salon',
+--   'salon',
+--   '+919999999999',
+--   'owner@demosalon.test',
+--   '12 Demo Street, Bengaluru',
+--   'Asia/Kolkata',
+--   'Maya',
+--   'Thank you for calling Demo Salon. How can I help?',
+--   '+919888888888',
+--   '[
+--     {"day":"monday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"tuesday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"wednesday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"thursday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"friday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"saturday","open":"10:00","close":"20:00","closed":false},
+--     {"day":"sunday","open":"00:00","close":"00:00","closed":true}
+--   ]'::jsonb,
+--   '[
+--     {"name":"Haircut","duration_minutes":30,"price":350},
+--     {"name":"Hair Color","duration_minutes":90,"price":2500},
+--     {"name":"Facial","duration_minutes":45,"price":900}
+--   ]'::jsonb
+-- );

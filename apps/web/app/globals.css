@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 80 10% 5%;
+    --foreground: 80 5% 95%;
+    --card: 80 10% 8%;
+    --card-foreground: 80 5% 95%;
+    --popover: 80 10% 8%;
+    --popover-foreground: 80 5% 95%;
+    --primary: 88 100% 65%;
+    --primary-foreground: 80 20% 8%;
+    --secondary: 80 8% 14%;
+    --secondary-foreground: 80 5% 95%;
+    --muted: 80 8% 14%;
+    --muted-foreground: 80 5% 60%;
+    --accent: 88 100% 65%;
+    --accent-foreground: 80 20% 8%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 80 8% 16%;
+    --input: 80 8% 16%;
+    --ring: 88 100% 65%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body { @apply bg-background text-foreground; font-feature-settings: "cv11", "ss01"; }
+  body { background:
+    radial-gradient(ellipse at 0% 0%, rgba(166,255,77,.06), transparent 50%),
+    radial-gradient(ellipse at 100% 0%, rgba(166,255,77,.03), transparent 40%),
+    hsl(var(--background));
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-helio-edge bg-helio-panel/80 backdrop-blur-md;
+  }
+  .panel-soft {
+    @apply rounded-2xl border border-helio-edge bg-helio-surface;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-helio px-4 py-2 text-sm font-medium text-helio-ink transition hover:bg-helio-dark;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-full border border-helio-edge px-4 py-2 text-sm text-foreground/80 hover:bg-helio-surface;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-helio-edge bg-helio-surface px-2.5 py-1 text-xs font-medium;
+  }
+  .status-dot { @apply inline-block h-2 w-2 rounded-full; }
+}

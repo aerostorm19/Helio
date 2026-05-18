@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"landing:%{http_code} login:%{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"login:%{http_code}\\\\n\" http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"overview:%{http_code}\\\\n\" http://localhost:3000/overview)",
+      "Bash(curl -s -o /dev/null -w \"onboard:%{http_code}\\\\n\" http://localhost:3000/onboard)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
