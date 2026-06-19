@@ -31,7 +31,7 @@ def _parse_date(description: str, tz_name: str) -> datetime:
 class ToolHandlers:
     """Execute Gemini tool calls. Each handler must NEVER raise — return error dict instead."""
 
-    async def execute(self, tool_calls: list, session) -> list[dict]:
+    async def execute(self, tool_calls: list, session, background_tasks = None) -> list[dict]:
         results = []
         for call in tool_calls:
             name = getattr(call, "name", None) or call.get("name")
@@ -40,9 +40,9 @@ class ToolHandlers:
                 if name == "check_availability":
                     result = await self._check_availability(args, session)
                 elif name == "book_appointment":
-                    result = await self._book_appointment(args, session)
+                    result = await self._book_appointment(args, session, background_tasks)
                 elif name == "escalate_to_human":
-                    result = await self._escalate(args, session)
+                    result = await self._escalate(args, session, background_tasks)
                 else:
                     result = {"error": f"Unknown tool: {name}"}
             except Exception as e:
@@ -53,6 +53,8 @@ class ToolHandlers:
 
     async def _check_availability(self, args: dict, session) -> dict:
         from services.calendar import calendar_service
+
+        from config import settings
 
         business = session.business
         try:
@@ -75,7 +77,7 @@ class ToolHandlers:
             return {"available": False, "message": "No slots available on that date."}
         return {"available": True, "date": date.strftime("%Y-%m-%d"), "slots": slots[:5]}
 
-    async def _book_appointment(self, args: dict, session) -> dict:
+    async def _book_appointment(self, args: dict, session, background_tasks = None) -> dict:
         from services.calendar import calendar_service
         from services.confirmations import confirmation_service
 
@@ -122,7 +124,8 @@ class ToolHandlers:
             logger.exception("Google Calendar event create failed")
 
         # Send confirmation asynchronously — never block the call.
-        asyncio.create_task(confirmation_service.send(business, appt))
+        if background_tasks:
+            background_tasks.add_task(confirmation_service.send, business, appt)
 
         # Flag the call as a booking outcome.
         sb.table("calls").update(
@@ -135,7 +138,7 @@ class ToolHandlers:
             "confirmation": f"{args['date_str']} at {args['time_str']}",
         }
 
-    async def _escalate(self, args: dict, session) -> dict:
+    async def _escalate(self, args: dict, session, background_tasks = None) -> dict:
         from services.notifications import notification_service
 
         sb = get_supabase()
@@ -147,9 +150,10 @@ class ToolHandlers:
             }
         ).eq("id", session.call_id).execute()
 
-        asyncio.create_task(
-            notification_service.send_escalation_alert(session.business, session)
-        )
+        if background_tasks:
+            background_tasks.add_task(
+                notification_service.send_escalation_alert, session.business, session
+            )
 
         return {
             "escalate_to": session.business.get("escalation_phone"),

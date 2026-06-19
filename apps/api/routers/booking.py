@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import dateparser
 import pytz
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from models.database import get_business_by_id, get_supabase
 from models.schemas import AppointmentCreate, AvailabilityQuery
@@ -32,7 +32,7 @@ async def availability(q: AvailabilityQuery):
 
 
 @router.post("/create")
-async def create(appt: AppointmentCreate):
+async def create(appt: AppointmentCreate, background_tasks: BackgroundTasks):
     business = await get_business_by_id(appt.business_id)
     if not business:
         raise HTTPException(404, "Business not found")
@@ -53,7 +53,7 @@ async def create(appt: AppointmentCreate):
     except Exception:
         logger.exception("Calendar insert failed")
 
-    asyncio.create_task(confirmation_service.send(business, created))
+    background_tasks.add_task(confirmation_service.send, business, created)
     return created
 
 
@@ -67,6 +67,18 @@ async def confirm(appt_id: str):
 @router.put("/{appt_id}/cancel")
 async def cancel(appt_id: str):
     sb = get_supabase()
+    try:
+        res = sb.table("appointments").select("google_calendar_event_id, business_id").eq("id", appt_id).single().execute()
+        if res.data:
+            event_id = res.data.get("google_calendar_event_id")
+            biz_id = res.data.get("business_id")
+            if event_id and biz_id:
+                business = await get_business_by_id(biz_id)
+                if business:
+                    await calendar_service.delete_event(business, event_id)
+    except Exception:
+        logger.exception("Failed to delete event from Google Calendar during cancellation")
+
     sb.table("appointments").update({"status": "cancelled"}).eq("id", appt_id).execute()
     return {"ok": True}
 
@@ -82,6 +94,17 @@ async def reschedule(appt_id: str, new_time: datetime):
 
 @router.get("/upcoming/{business_id}")
 async def upcoming(business_id: str, days: int = 14):
+    if business_id == "demo-biz":
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        return [
+            {"id": "demo-appt-1", "customer_name": "Priya Sharma", "service": "Haircut",
+             "scheduled_at": (now + timedelta(hours=3)).isoformat(), "status": "confirmed", "duration_minutes": 30},
+            {"id": "demo-appt-2", "customer_name": "Rahul Verma", "service": "Hair Color",
+             "scheduled_at": (now + timedelta(days=1, hours=2)).isoformat(), "status": "confirmed", "duration_minutes": 90},
+            {"id": "demo-appt-3", "customer_name": "Sneha Patel", "service": "Facial",
+             "scheduled_at": (now + timedelta(days=2)).isoformat(), "status": "confirmed", "duration_minutes": 45},
+        ]
     sb = get_supabase()
     now = datetime.utcnow()
     until = now + timedelta(days=days)

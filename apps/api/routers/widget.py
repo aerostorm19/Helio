@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import datetime
 
@@ -16,36 +17,73 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+DEMO_BUSINESS = {
+    "id": "demo-biz",
+    "name": "Demo Salon",
+    "slug": "demo-salon",
+    "industry": "salon",
+    "agent_name": "Maya",
+    "greeting_message": "Thank you for calling Demo Salon, this is Maya! How can I help you today?",
+    "timezone": "Asia/Kolkata",
+    "services": [
+        {"name": "Haircut", "duration_minutes": 30, "price": 350},
+        {"name": "Hair Color", "duration_minutes": 90, "price": 2500},
+        {"name": "Facial", "duration_minutes": 45, "price": 900},
+    ],
+    "working_hours": [
+        {"day": "monday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "tuesday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "wednesday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "thursday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "friday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "saturday", "open": "10:00", "close": "20:00", "closed": False},
+        {"day": "sunday", "open": "00:00", "close": "00:00", "closed": True},
+    ],
+    "escalation_phone": None,
+    "after_hours_message": None,
+    "after_hours_mode": False,
+    "whatsapp_number": None,
+    "google_calendar_id": None,
+}
+
+
 @router.websocket("/stream/{business_id}")
 async def widget_stream(websocket: WebSocket, business_id: str):
     await websocket.accept()
-    business = await get_business_by_id(business_id)
-    if not business:
-        await websocket.close(code=4404)
-        return
+
+    if business_id == "demo-biz":
+        business = DEMO_BUSINESS
+    else:
+        business = await get_business_by_id(business_id)
+        if not business:
+            await websocket.close(code=4404)
+            return
 
     session = await session_service.create_widget_session(business)
 
-    sb = get_supabase()
-    call_row = (
-        sb.table("calls")
-        .insert(
-            {
-                "business_id": business_id,
-                "twilio_call_sid": session.call_sid,
-                "call_direction": "inbound",
-                "caller_number": "widget",
-            }
-        )
-        .execute()
-    ).data[0]
-    session.call_id = call_row["id"]
-    await session_service.update_session(session)
+    # Skip DB call logging for demo
+    if business_id != "demo-biz":
+        sb = get_supabase()
+        call_row = (
+            sb.table("calls")
+            .insert(
+                {
+                    "business_id": business_id,
+                    "twilio_call_sid": session.call_sid,
+                    "call_direction": "inbound",
+                    "caller_number": "widget",
+                }
+            )
+            .execute()
+        ).data[0]
+        session.call_id = call_row["id"]
+        await session_service.update_session(session)
 
     greeting = (
         business.get("greeting_message")
         or f"Hi, thanks for calling {business['name']}! How can I help?"
     )
+    await websocket.send_text(json.dumps({"role": "assistant", "text": greeting}))
     greeting_audio = await tts_service.synthesize_raw(greeting, business_id)
     if greeting_audio:
         await websocket.send_bytes(greeting_audio)
@@ -67,6 +105,9 @@ async def widget_stream(websocket: WebSocket, business_id: str):
             if not transcript.text.strip():
                 continue
 
+            # Send user transcript event to client
+            await websocket.send_text(json.dumps({"role": "user", "text": transcript.text}))
+
             session.messages.append(Message(role="user", content=transcript.text))
             llm_response = await llm_service.process_turn(session)
 
@@ -76,6 +117,9 @@ async def widget_stream(websocket: WebSocket, business_id: str):
 
             session.messages.append(Message(role="assistant", content=llm_response.text))
             await session_service.update_session(session)
+
+            # Send assistant transcript event before audio so UI updates immediately
+            await websocket.send_text(json.dumps({"role": "assistant", "text": llm_response.text}))
 
             audio = await tts_service.synthesize_raw(llm_response.text, business_id)
             if audio:
@@ -88,13 +132,15 @@ async def widget_stream(websocket: WebSocket, business_id: str):
     except Exception:
         logger.exception("Widget stream failed")
     finally:
-        try:
-            sb.table("calls").update(
-                {
-                    "ended_at": datetime.utcnow().isoformat(),
-                    "transcript": [m.model_dump() for m in session.messages],
-                }
-            ).eq("id", session.call_id).execute()
-        except Exception:
-            logger.exception("Widget call finalize failed")
+        if business_id != "demo-biz" and session.call_id:
+            try:
+                sb = get_supabase()
+                sb.table("calls").update(
+                    {
+                        "ended_at": datetime.utcnow().isoformat(),
+                        "transcript": [m.model_dump() for m in session.messages],
+                    }
+                ).eq("id", session.call_id).execute()
+            except Exception:
+                logger.exception("Widget call finalize failed")
         await session_service.delete_session(session.call_sid)

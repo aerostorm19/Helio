@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 
@@ -65,7 +66,8 @@ class TTSService:
             from google.cloud import texttospeech
 
             input_text = texttospeech.SynthesisInput(text=text)
-            response = self._client.synthesize_speech(
+            response = await asyncio.to_thread(
+                self._client.synthesize_speech,
                 input=input_text,
                 voice=self._voice,
                 audio_config=self._audio_config,
@@ -96,7 +98,8 @@ class TTSService:
             from google.cloud import texttospeech
 
             input_text = texttospeech.SynthesisInput(text=text)
-            response = self._client.synthesize_speech(
+            response = await asyncio.to_thread(
+                self._client.synthesize_speech,
                 input=input_text,
                 voice=self._voice,
                 audio_config=self._audio_config,

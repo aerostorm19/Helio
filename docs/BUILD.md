@@ -6,7 +6,7 @@ Full prompt-derived build sequence. Follow phases top-to-bottom.
 1. **Supabase setup** — apply `supabase/migrations/001_initial_schema.sql`, enable `pgvector`, verify RLS.
 2. **FastAPI skeleton** — `apps/api/main.py`. Deploy to Railway, verify `/health`.
 3. **Twilio webhook** — `POST /call/incoming` returns greeting TwiML.
-4. **LLM integration** — `services/llm.py` with Gemini 1.5 Flash.
+4. **LLM integration** — `services/llm.py` with Gemini 2.5 Flash.
 5. **Complete call loop** — `POST /call/speech`: STT → LLM → TTS → TwiML.
 6. **Tool calling** — `check_availability`, `book_appointment`, `escalate_to_human`.
 7. **Google Calendar** — replace mocked availability with real Calendar queries.

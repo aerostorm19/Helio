@@ -39,25 +39,21 @@ const DEMO: Business = {
     { name: "Hair Color", duration_minutes: 90, price: 2500 },
     { name: "Facial",     duration_minutes: 45, price: 900 },
   ],
+  google_calendar_id: null,
+  google_calendar_access_token: null,
+  google_calendar_refresh_token: null,
+  google_calendar_token_expiry: null,
+  twilio_phone_sid: null,
+  meta_waba_id: null,
+  meta_phone_number_id: null,
+  country_code: "IN",
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
 
 export function useBusiness() {
   return useSWR<Business | null>("current-business", async () => {
-    try {
-      const supabase = createBrowserSupabase();
-      const { data: userRes } = await supabase.auth.getUser();
-      if (!userRes.user) return DEMO;
-      const { data } = await supabase
-        .from("businesses")
-        .select("*")
-        .eq("user_id", userRes.user.id)
-        .limit(1)
-        .maybeSingle();
-      return (data as Business | null) ?? DEMO;
-    } catch {
-      return DEMO;
-    }
+    // Demo mode — always return DEMO business
+    return DEMO;
   });
 }

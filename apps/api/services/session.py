@@ -72,6 +72,8 @@ class SessionService:
             return None
 
     async def update_session(self, session: CallSession) -> None:
+        if len(session.messages) > 8:
+            session.messages = session.messages[-8:]
         try:
             await self.redis.setex(
                 self.key(session.call_sid),

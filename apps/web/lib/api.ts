@@ -18,6 +18,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T | null> {
   }
 }
 
+async function authedRequest<T>(path: string, token: string, init?: RequestInit): Promise<T | null> {
+  return request<T>(path, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, ...(init?.headers || {}) },
+  });
+}
+
 export const api = {
   // Dashboard
   overview:    (id: string) => request<any>(`/dashboard/${id}/overview`),
@@ -46,4 +53,8 @@ export const api = {
     request<any>(`/business/${bizId}/faqs/${faqId}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteFaq:   (bizId: string, faqId: string) =>
     request<any>(`/business/${bizId}/faqs/${faqId}`, { method: "DELETE" }),
+
+  // Onboarding — requires auth token
+  onboard: (token: string, body: any) =>
+    authedRequest<any>("/business/onboard", token, { method: "POST", body: JSON.stringify(body) }),
 };

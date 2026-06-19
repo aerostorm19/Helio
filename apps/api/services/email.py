@@ -48,7 +48,9 @@ class EmailService:
         """
 
         try:
-            resend.Emails.send(
+            import asyncio
+            await asyncio.to_thread(
+                resend.Emails.send,
                 {
                     "from": f"{business['name']} via Helio <{settings.resend_from_email}>",
                     "to": appointment["customer_email"],

@@ -26,6 +26,18 @@ export interface Business {
   escalation_alerts: boolean;
   working_hours: WorkingHour[];
   services: Service[];
+  // Calendar integration
+  google_calendar_id: string | null;
+  google_calendar_access_token: string | null;
+  google_calendar_refresh_token: string | null;
+  google_calendar_token_expiry: string | null;
+  // Twilio
+  twilio_phone_sid: string | null;
+  // WhatsApp
+  meta_waba_id: string | null;
+  meta_phone_number_id: string | null;
+  // Country
+  country_code: string | null;
   created_at: string;
   updated_at: string;
 }

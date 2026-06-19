@@ -9,9 +9,20 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-def normalize_phone(phone: str) -> str:
-    digits = re.sub(r"\D", "", phone or "")
-    return digits
+import phonenumbers
+
+def normalize_phone(phone_str: str, country_code: str = "IN") -> str:
+    try:
+        parsed = phonenumbers.parse(phone_str, country_code)
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    except Exception:
+        pass
+    # Fallback: strip non-digits, prepend country code
+    digits = re.sub(r'\D', '', phone_str or "")
+    if country_code == "IN" and not digits.startswith("91"):
+        return f"+91{digits[-10:]}"
+    return f"+{digits}"
 
 
 class WhatsAppService:
@@ -44,9 +55,22 @@ class WhatsAppService:
 
         payload = {
             "messaging_product": "whatsapp",
-            "to": normalize_phone(appointment["customer_phone"]),
-            "type": "text",
-            "text": {"body": body},
+            "to": normalize_phone(appointment["customer_phone"], business.get("country_code", "IN")),
+            "type": "template",
+            "template": {
+                "name": "booking_confirmation",
+                "language": {"code": "en_US"},
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": business.get("name", "the business")},
+                            {"type": "text", "text": f"{formatted_date} at {formatted_time}"},
+                            {"type": "text", "text": appointment.get("service", "appointment")}
+                        ]
+                    }
+                ]
+            }
         }
 
         url = f"{self.BASE_URL}/{business['meta_phone_number_id']}/messages"

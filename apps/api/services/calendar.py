@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
@@ -6,6 +7,8 @@ import pytz
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
+from models.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -24,24 +27,41 @@ def _service_duration(services: list[dict], name: str) -> int:
     return 30
 
 
-def _overlaps(slot_start: datetime, slot_end: datetime, busy: list[dict]) -> bool:
-    for b in busy or []:
-        bs = datetime.fromisoformat(b["start"].replace("Z", "+00:00"))
-        be = datetime.fromisoformat(b["end"].replace("Z", "+00:00"))
-        if slot_start < be and slot_end > bs:
+def is_overlapping(slot_start: datetime, slot_end: datetime, busy_periods: list) -> bool:
+    for period in busy_periods:
+        busy_start = datetime.fromisoformat(period["start"].replace("Z", "+00:00"))
+        busy_end = datetime.fromisoformat(period["end"].replace("Z", "+00:00"))
+        if slot_start < busy_end and slot_end > busy_start:
             return True
     return False
 
 
 class CalendarService:
     def _credentials(self, business: dict) -> Credentials:
-        return Credentials(
+        creds = Credentials(
             token=business.get("google_calendar_access_token"),
             refresh_token=business.get("google_calendar_refresh_token"),
             token_uri="https://oauth2.googleapis.com/token",
             client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
             client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
         )
+        # Save to DB whenever token auto-refreshes
+        original_refresh = creds.refresh
+        def refresh_and_save(request):
+            original_refresh(request)
+            asyncio.create_task(self._save_refreshed_token(business["id"], creds))
+        creds.refresh = refresh_and_save
+        return creds
+
+    async def _save_refreshed_token(self, business_id: str, creds: Credentials):
+        try:
+            sb = get_supabase()
+            sb.table("businesses").update({
+                "google_calendar_access_token": creds.token,
+                "google_calendar_token_expiry": creds.expiry.isoformat() if creds.expiry else None,
+            }).eq("id", business_id).execute()
+        except Exception:
+            logger.exception("Failed to save refreshed token to database")
 
     def _service(self, business: dict):
         creds = self._credentials(business)
@@ -76,13 +96,15 @@ class CalendarService:
         if cal_id and business.get("google_calendar_access_token"):
             try:
                 svc = self._service(business)
-                fb = svc.freebusy().query(
-                    body={
-                        "timeMin": day_start.isoformat(),
-                        "timeMax": day_end.isoformat(),
-                        "items": [{"id": cal_id}],
-                    }
-                ).execute()
+                fb = await asyncio.to_thread(
+                    svc.freebusy().query(
+                        body={
+                            "timeMin": day_start.isoformat(),
+                            "timeMax": day_end.isoformat(),
+                            "items": [{"id": cal_id}],
+                        }
+                    ).execute
+                )
                 busy = fb["calendars"][cal_id].get("busy", [])
             except Exception:
                 logger.exception("Freebusy query failed")
@@ -90,7 +112,7 @@ class CalendarService:
         available = []
         for slot in candidates:
             slot_end = slot + timedelta(minutes=duration)
-            if not _overlaps(slot, slot_end, busy):
+            if not is_overlapping(slot, slot_end, busy):
                 available.append(slot.strftime("%I:%M %p"))
         return available
 
@@ -119,11 +141,27 @@ class CalendarService:
                 "end":   {"dateTime": end_dt.isoformat(),   "timeZone": tz_name},
             }
             svc = self._service(business)
-            res = svc.events().insert(calendarId=cal_id, body=event).execute()
+            res = await asyncio.to_thread(
+                svc.events().insert(calendarId=cal_id, body=event).execute
+            )
             return res.get("id")
         except Exception:
             logger.exception("Calendar event create failed")
             return None
+
+    async def delete_event(self, business: dict, event_id: str) -> bool:
+        cal_id = business.get("google_calendar_id")
+        if not cal_id or not business.get("google_calendar_access_token"):
+            return False
+        try:
+            svc = self._service(business)
+            await asyncio.to_thread(
+                svc.events().delete(calendarId=cal_id, eventId=event_id).execute
+            )
+            return True
+        except Exception:
+            logger.exception("Calendar event delete failed")
+            return False
 
 
 calendar_service = CalendarService()

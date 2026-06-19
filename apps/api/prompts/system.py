@@ -21,7 +21,7 @@ def get_current_datetime(tz_name: str = "Asia/Kolkata") -> str:
     return datetime.now(tz).strftime("%A, %B %d %Y at %I:%M %p %Z")
 
 
-def build_system_prompt(business: dict, current_datetime: str | None = None) -> str:
+def build_system_prompt(business: dict, current_datetime: str | None = None, faqs: list[dict] = None) -> str:
     if current_datetime is None:
         current_datetime = get_current_datetime(business.get("timezone", "Asia/Kolkata"))
 
@@ -30,9 +30,12 @@ def build_system_prompt(business: dict, current_datetime: str | None = None) -> 
         for s in business.get("services", []) or []
     )
 
+    if faqs is None:
+        faqs = business.get("faqs", []) or []
+
     faqs_text = "\n".join(
         f"Q: {f['question']}\nA: {f['answer']}"
-        for f in business.get("faqs", []) or []
+        for f in faqs
     )
 
     hours_text = format_working_hours(business.get("working_hours", []) or [])

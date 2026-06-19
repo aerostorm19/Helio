@@ -20,9 +20,12 @@ import {
   mockTopFaqs, mockServicesBreakdown, mockUpcomingAppointments, mockRecentCalls, mockSparkline,
 } from "@/lib/mock";
 import { Sparkles, PhoneCall, Pause, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import DemoCallModal from "@/components/dashboard/DemoCallModal";
 
 export default function OverviewPage() {
   const { data: business } = useBusiness();
+  const [showDemo, setShowDemo] = useState(false);
   const id = business?.id;
   const { data: ov }     = useSWR(id ? ["overview", id] : null, () => api.overview(id!));
   const { data: week }   = useSWR(id ? ["week", id] : null,     () => api.weekStats(id!));
@@ -41,6 +44,7 @@ export default function OverviewPage() {
   const services = mockServicesBreakdown();
 
   return (
+    <>
     <div className="space-y-6">
       {/* ── Header ─────────────────────────────── */}
       <div className="flex items-end justify-between">
@@ -53,7 +57,7 @@ export default function OverviewPage() {
         </div>
         <div className="flex gap-2">
           <button className="btn-ghost"><Pause className="h-4 w-4 mr-1" /> Pause agent</button>
-          <button className="btn-primary"><PhoneCall className="h-4 w-4 mr-1" /> Test call</button>
+          <button className="btn-primary" onClick={() => setShowDemo(true)}><PhoneCall className="h-4 w-4 mr-1" /> Test call</button>
         </div>
       </div>
 
@@ -157,6 +161,14 @@ export default function OverviewPage() {
         </div>
       </div>
     </div>
+    {showDemo && business?.id && (
+      <DemoCallModal
+        businessId={business.id}
+        agentName={business.agent_name || "Maya"}
+        onClose={() => setShowDemo(false)}
+      />
+    )}
+    </>
   );
 }
 

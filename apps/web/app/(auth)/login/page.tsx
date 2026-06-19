@@ -20,7 +20,8 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setError(error.message);
-    router.push("/overview");
+    const params = new URLSearchParams(window.location.search);
+    router.push(params.get("next") || "/overview");
   }
 
   return (
