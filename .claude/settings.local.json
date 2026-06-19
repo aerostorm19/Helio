@@ -8,7 +8,16 @@
       "Bash(curl -s -o /dev/null -w \"login:%{http_code}\\\\n\" http://localhost:3000/login)",
       "Bash(curl -s -o /dev/null -w \"overview:%{http_code}\\\\n\" http://localhost:3000/overview)",
       "Bash(curl -s -o /dev/null -w \"onboard:%{http_code}\\\\n\" http://localhost:3000/onboard)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"uvicorn\")",
+      "Bash(kill 12951 12958)",
+      "Bash(conda run *)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(nohup npm run dev -- --port 3001)",
+      "Bash(echo \"Web PID: $!\")",
+      "Bash(curl -s -o /dev/null -w \"API: %{http_code}\" http://localhost:8000/health)",
+      "Bash(curl -s -o /dev/null -w \"Web: %{http_code}\" http://localhost:3001/overview)"
     ]
   }
 }
