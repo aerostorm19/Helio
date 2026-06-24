@@ -14,11 +14,11 @@ CHECK_AVAILABILITY = genai.protos.Tool(
                 properties={
                     "date_description": genai.protos.Schema(
                         type=genai.protos.Type.STRING,
-                        description="Natural language date e.g. 'tomorrow', 'Saturday', 'May 24'",
+                        description="Natural language date e.g. 'tomorrow', 'this Saturday', 'June 15'",
                     ),
                     "service_name": genai.protos.Schema(
                         type=genai.protos.Type.STRING,
-                        description="Name of the service e.g. 'haircut', 'consultation'",
+                        description="Name of the service e.g. 'General Consultation', 'Physiotherapy Session'",
                     ),
                 },
                 required=["date_description"],

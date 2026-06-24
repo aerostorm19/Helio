@@ -41,7 +41,7 @@ def build_system_prompt(business: dict, current_datetime: str | None = None, faq
     hours_text = format_working_hours(business.get("working_hours", []) or [])
 
     agent_name = business.get("agent_name", "Maya")
-    biz_name = business.get("name", "the business")
+    biz_name = business.get("name", "the clinic")
 
     return f"""
 You are {agent_name}, the AI receptionist for {biz_name}.
