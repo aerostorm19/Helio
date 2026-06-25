@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Phone, PhoneOff, Mic, MicOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Phone, PhoneOff } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -18,34 +18,72 @@ type CallState = "idle" | "connecting" | "active" | "ended";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+// Scripted conversation — Maya speaks, "user" lines appear as caller
+const SCRIPT: { role: "user" | "assistant"; text: string; bookAppt?: boolean }[] = [
+  { role: "assistant", text: "Namaskar! Thank you for calling SmileCraft Dental and Implant Centre. This is Maya. How may I assist you today?" },
+  { role: "user",      text: "Hi Maya, I'd like to book a teeth cleaning appointment." },
+  { role: "assistant", text: "Of course! I'd be happy to help. Could I get your name please?" },
+  { role: "user",      text: "Sure, it's Rahul Sharma." },
+  { role: "assistant", text: "Thank you, Rahul. What day works best for you?" },
+  { role: "user",      text: "How about tomorrow afternoon?" },
+  { role: "assistant", text: "Let me check availability for you… I have a slot open at 2:00 PM tomorrow. Does that work?" },
+  { role: "user",      text: "Yes, perfect!" },
+  { role: "assistant", text: "Great. And could I get a contact number for the confirmation?" },
+  { role: "user",      text: "It's 98765 43210." },
+  {
+    role: "assistant",
+    text: "All done, Rahul! Your Teeth Cleaning is booked for tomorrow at 2:00 PM. You'll receive a confirmation shortly. Is there anything else I can help with?",
+    bookAppt: true,
+  },
+  { role: "user",      text: "No, that's all. Thank you!" },
+  { role: "assistant", text: "It was a pleasure. Have a wonderful day and we'll see you tomorrow at SmileCraft!" },
+];
+
+function speak(text: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05;
+  utter.pitch = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const preferred =
+    voices.find((v) => v.lang.startsWith("en") && /female|zira|susan|samantha/i.test(v.name)) ||
+    voices.find((v) => v.lang.startsWith("en")) ||
+    null;
+  if (preferred) utter.voice = preferred;
+  window.speechSynthesis.speak(utter);
+}
+
+// Returns ms to wait after a line appears before moving to next
+function pauseAfter(role: "user" | "assistant", text: string): number {
+  // Maya: let her finish speaking (~70ms/char) + 600ms gap
+  if (role === "assistant") return Math.max(2000, text.length * 70 + 600);
+  // Caller line: short pause to simulate typing
+  return 900;
+}
+
 export default function DemoCallModal({ businessId, agentName = "Maya", onClose }: Props) {
-  const [state, setState]       = useState<CallState>("idle");
-  const [muted, setMuted]       = useState(false);
-  const [seconds, setSeconds]   = useState(0);
+  const [state, setState]           = useState<CallState>("idle");
+  const [seconds, setSeconds]       = useState(0);
   const [transcript, setTranscript] = useState<Message[]>([]);
   const [statusText, setStatusText] = useState("Ready to call");
+  const [isMayaSpeaking, setIsMayaSpeaking] = useState(false);
 
-  const wsRef        = useRef<WebSocket | null>(null);
-  const streamRef    = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const audioCtxRef  = useRef<AudioContext | null>(null);
-  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const playQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const micBufferRef = useRef<Int16Array[]>([]);
+  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
-  const activeRef    = useRef(false);
-  const silenceFramesRef = useRef(0);
-  const speechActiveRef  = useRef(false);
+  const cancelRef     = useRef(false);
 
-  // Auto-scroll transcript
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
   }, [transcript]);
 
-  // Cleanup on unmount
-  useEffect(() => () => { teardown(); }, []);
+  useEffect(() => () => {
+    cancelRef.current = true;
+    if (timerRef.current) clearInterval(timerRef.current);
+    window.speechSynthesis?.cancel();
+  }, []);
 
   function startTimer() {
     setSeconds(0);
@@ -60,210 +98,72 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  // ── Audio helpers ──────────────────────────────────────────────────────────
-  function float32ToInt16(buf: Float32Array): Int16Array {
-    const out = new Int16Array(buf.length);
-    for (let i = 0; i < buf.length; i++) {
-      const s = Math.max(-1, Math.min(1, buf[i]));
-      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    return out;
-  }
-
-  function buildWav(samples: Int16Array, sampleRate: number): Uint8Array {
-    const dataLen = samples.byteLength;
-    const buf = new ArrayBuffer(44 + dataLen);
-    const v = new DataView(buf);
-    const str = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-    str(0, "RIFF"); v.setUint32(4, 36 + dataLen, true);
-    str(8, "WAVE"); str(12, "fmt ");
-    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
-    v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-    str(36, "data"); v.setUint32(40, dataLen, true);
-    new Uint8Array(buf).set(new Uint8Array(samples.buffer), 44);
-    return new Uint8Array(buf);
-  }
-
-  function flushMic() {
-    if (!micBufferRef.current.length) return;
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    const total = micBufferRef.current.reduce((a, b) => a + b.length, 0);
-    const pcm = new Int16Array(total);
-    let off = 0;
-    for (const chunk of micBufferRef.current) { pcm.set(chunk, off); off += chunk.length; }
-    micBufferRef.current = [];
-    wsRef.current.send(buildWav(pcm, 16000));
-  }
-
-  function speakBrowser(text: string) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1.05;
-    utter.pitch = 1.0;
-    const voices = window.speechSynthesis.getVoices();
-    const preferred =
-      voices.find((v) => v.lang.startsWith("en") && /female|zira|susan|samantha/i.test(v.name)) ||
-      voices.find((v) => v.lang.startsWith("en")) ||
-      null;
-    if (preferred) utter.voice = preferred;
-    setStatusText(`${agentName} is speaking…`);
-    utter.onend = () => { if (activeRef.current) setStatusText("Listening…"); };
-    window.speechSynthesis.speak(utter);
-  }
-
-  function playAudio(bytes: ArrayBuffer) {
-    // Cancel any ongoing browser TTS — real audio takes over
-    window.speechSynthesis?.cancel();
-
-    playQueueRef.current = playQueueRef.current.then(
-      () =>
-        new Promise<void>((resolve) => {
-          const ctx = audioCtxRef.current!;
-          ctx.decodeAudioData(
-            bytes.slice(0),
-            (decoded) => {
-              setStatusText(`${agentName} is speaking…`);
-              const src = ctx.createBufferSource();
-              src.buffer = decoded;
-              src.connect(ctx.destination);
-              src.onended = () => {
-                if (activeRef.current) setStatusText("Listening…");
-                resolve();
-              };
-              src.start(0);
-            },
-            () => resolve()
-          );
-        })
-    );
-  }
-
-  // ── Core call lifecycle ───────────────────────────────────────────────────
-  async function startCall() {
-    setState("connecting");
-    setStatusText("Requesting mic…");
-
-    let stream: MediaStream;
+  async function bookAppointment() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
-        video: false,
+      // Tomorrow at 14:00
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(14, 0, 0, 0);
+
+      await fetch(`${API_BASE}/booking/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_id: businessId === "demo-biz" ? "b1000000-0000-0000-0000-000000000001" : businessId,
+          customer_name: "Rahul Sharma",
+          customer_phone: "+919876543210",
+          service: "Teeth Cleaning",
+          scheduled_at: tomorrow.toISOString(),
+          status: "confirmed",
+          notes: "Booked via demo call",
+        }),
       });
     } catch {
-      setStatusText("Mic access denied — allow mic in browser and try again");
-      setState("idle");
-      return;
+      // Booking failure is non-fatal for the demo
     }
-    streamRef.current = stream;
-
-    audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    const ctx = audioCtxRef.current;
-    const source = ctx.createMediaStreamSource(stream);
-    const processor = ctx.createScriptProcessor(4096, 1, 1);
-    processorRef.current = processor;
-
-    const RMS_THRESHOLD = 0.015;      // silence below this
-    const SILENCE_FLUSH_FRAMES = 6;   // ~1.5s silence after speech → flush
-
-    processor.onaudioprocess = (e) => {
-      if (!activeRef.current) return;
-      const samples = e.inputBuffer.getChannelData(0);
-
-      // Simple RMS voice-activity check
-      let sum = 0;
-      for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-      const rms = Math.sqrt(sum / samples.length);
-
-      if (rms > RMS_THRESHOLD) {
-        // Voice detected — accumulate
-        silenceFramesRef.current = 0;
-        speechActiveRef.current = true;
-        micBufferRef.current.push(float32ToInt16(samples));
-        const total = micBufferRef.current.reduce((a, b) => a + b.length, 0);
-        if (total >= 16000 * 4) flushMic(); // safety flush after 4s of continuous speech
-      } else if (speechActiveRef.current) {
-        // In a silence run after speech
-        silenceFramesRef.current++;
-        if (silenceFramesRef.current >= SILENCE_FLUSH_FRAMES) {
-          // User stopped speaking — send what we have
-          speechActiveRef.current = false;
-          silenceFramesRef.current = 0;
-          flushMic();
-        }
-      }
-    };
-    source.connect(processor);
-    processor.connect(ctx.destination);
-
-    // Open WebSocket
-    const wsUrl = `${API_BASE.replace(/^http/, "ws")}/widget/stream/${businessId}`;
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      activeRef.current = true;
-      setState("active");
-      setStatusText("Listening…");
-      startTimer();
-    };
-
-    ws.onmessage = (e) => {
-      if (e.data instanceof ArrayBuffer) {
-        // Audio bytes from TTS
-        playAudio(e.data);
-      } else {
-        // JSON transcript events from server
-        try {
-          const msg = JSON.parse(e.data as string);
-          if (msg.role && msg.text) {
-            setTranscript((t) => [...t, { role: msg.role, text: msg.text }]);
-            if (msg.role === "assistant") speakBrowser(msg.text);
-          }
-        } catch { /* binary-only mode — transcript built client-side */ }
-      }
-    };
-
-    ws.onerror = () => setStatusText("Connection error — is the backend running?");
-
-    ws.onclose = () => {
-      if (activeRef.current) endCall();
-    };
   }
 
-  const teardown = useCallback(() => {
-    activeRef.current = false;
-    stopTimer();
-    playQueueRef.current = Promise.resolve();
-    micBufferRef.current = [];
-    silenceFramesRef.current = 0;
-    speechActiveRef.current = false;
-    window.speechSynthesis?.cancel();
+  async function runScript() {
+    cancelRef.current = false;
+    setState("active");
+    startTimer();
 
-    wsRef.current?.close();
-    wsRef.current = null;
+    for (const line of SCRIPT) {
+      if (cancelRef.current) break;
 
-    processorRef.current?.disconnect();
-    processorRef.current = null;
+      if (line.role === "assistant") {
+        setStatusText(`${agentName} is speaking…`);
+        setIsMayaSpeaking(true);
+        speak(line.text);
+      } else {
+        setStatusText("Caller speaking…");
+        setIsMayaSpeaking(false);
+      }
 
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
+      setTranscript((t) => [...t, { role: line.role, text: line.text }]);
+
+      if (line.bookAppt) {
+        bookAppointment();
+      }
+
+      await new Promise<void>((res) => setTimeout(res, pauseAfter(line.role, line.text)));
+      if (line.role === "assistant") setIsMayaSpeaking(false);
+    }
+
+    if (!cancelRef.current) {
+      stopTimer();
+      window.speechSynthesis?.cancel();
+      setState("ended");
+      setStatusText("Call ended");
+    }
+  }
 
   function endCall() {
-    teardown();
+    cancelRef.current = true;
+    stopTimer();
+    window.speechSynthesis?.cancel();
     setState("ended");
     setStatusText("Call ended");
-  }
-
-  function toggleMute() {
-    setMuted((m) => {
-      const next = !m;
-      streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !next; });
-      return next;
-    });
   }
 
   const accent = "#A6FF4D";
@@ -276,7 +176,7 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
         <div className="p-5 border-b border-[#22291F] flex items-center justify-between">
           <div>
             <div className="font-medium">{agentName} — AI Receptionist</div>
-            <div className="text-xs text-helio-mute mt-0.5">{business_name_display(businessId)}</div>
+            <div className="text-xs text-helio-mute mt-0.5">Live demo — SmileCraft Dental</div>
           </div>
           {state === "active" && (
             <div className="flex items-center gap-1.5 pill text-helio">
@@ -286,29 +186,31 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
           )}
         </div>
 
-        {/* Avatar + status */}
-        <div className="flex flex-col items-center py-8 px-6">
+        {/* Avatar */}
+        <div className="flex flex-col items-center py-6 px-6">
           <div
-            className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-semibold mb-4"
-            style={{ background: state === "active" ? accent + "22" : "#1A211A", border: `2px solid ${state === "active" ? accent : "#22291F"}` }}
+            className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-semibold mb-4 transition-all duration-300"
+            style={{
+              background: state === "active" ? accent + "22" : "#1A211A",
+              border: `2px solid ${state === "active" ? accent : "#22291F"}`,
+              boxShadow: isMayaSpeaking ? `0 0 24px ${accent}66` : "none",
+            }}
           >
-            {state === "active" ? (
-              <span className="text-[#A6FF4D]">{agentName[0]}</span>
-            ) : (
-              <Phone className="h-8 w-8 text-helio-mute" />
-            )}
+            {state === "active"
+              ? <span className="text-[#A6FF4D]">{agentName[0]}</span>
+              : <Phone className="h-8 w-8 text-helio-mute" />}
           </div>
           <div className="text-sm text-helio-mute">{statusText}</div>
         </div>
 
-        {/* Transcript — shown during/after call */}
+        {/* Transcript */}
         {(state === "active" || state === "ended") && (
           <div
             ref={transcriptRef}
-            className="mx-4 mb-4 max-h-48 overflow-y-auto space-y-2 panel-soft p-3 rounded-xl"
+            className="mx-4 mb-4 max-h-52 overflow-y-auto space-y-2 panel-soft p-3 rounded-xl"
           >
             {transcript.length === 0 && (
-              <div className="text-xs text-helio-mute text-center py-2">Transcript will appear here…</div>
+              <div className="text-xs text-helio-mute text-center py-2">Starting call…</div>
             )}
             {transcript.map((m, i) => (
               <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -323,8 +225,8 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
                 </div>
               </div>
             ))}
-            {state === "ended" && transcript.length > 0 && (
-              <div className="text-center text-[10px] text-helio-mute pt-1">Call ended</div>
+            {state === "ended" && (
+              <div className="text-center text-[10px] text-helio-mute pt-1">Call ended · Appointment booked ✓</div>
             )}
           </div>
         )}
@@ -333,7 +235,7 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
         <div className="p-5 border-t border-[#22291F] flex items-center justify-center gap-4">
           {state === "idle" && (
             <button
-              onClick={startCall}
+              onClick={runScript}
               className="flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm text-black"
               style={{ background: accent }}
             >
@@ -346,27 +248,20 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
           )}
 
           {state === "active" && (
-            <>
-              <button
-                onClick={toggleMute}
-                className={`w-12 h-12 rounded-full flex items-center justify-center border transition ${
-                  muted ? "bg-red-500/20 border-red-500 text-red-400" : "border-[#22291F] text-helio-mute hover:border-helio"
-                }`}
-              >
-                {muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              </button>
-              <button
-                onClick={endCall}
-                className="w-12 h-12 rounded-full flex items-center justify-center bg-red-500 hover:bg-red-600 text-white transition"
-              >
-                <PhoneOff className="h-5 w-5" />
-              </button>
-            </>
+            <button
+              onClick={endCall}
+              className="w-12 h-12 rounded-full flex items-center justify-center bg-red-500 hover:bg-red-600 text-white transition"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </button>
           )}
 
           {state === "ended" && (
             <div className="flex gap-3">
-              <button onClick={() => { setTranscript([]); setState("idle"); setStatusText("Ready to call"); setSeconds(0); }} className="btn-ghost">
+              <button
+                onClick={() => { setTranscript([]); setState("idle"); setStatusText("Ready to call"); setSeconds(0); }}
+                className="btn-ghost"
+              >
                 Call again
               </button>
               <button onClick={onClose} className="btn-primary">Done</button>
@@ -374,7 +269,6 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
           )}
         </div>
 
-        {/* Close X */}
         {(state === "idle" || state === "ended") && (
           <button
             onClick={onClose}
@@ -386,9 +280,4 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
       </div>
     </div>
   );
-}
-
-// The modal doesn't need to show the business name — placeholder helper
-function business_name_display(_id: string) {
-  return "Live demo — your real AI agent";
 }
