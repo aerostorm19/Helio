@@ -34,6 +34,8 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
   const micBufferRef = useRef<Int16Array[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const activeRef    = useRef(false);
+  const silenceFramesRef = useRef(0);
+  const speechActiveRef  = useRef(false);
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -142,11 +144,35 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
     const processor = ctx.createScriptProcessor(4096, 1, 1);
     processorRef.current = processor;
 
+    const RMS_THRESHOLD = 0.015;      // silence below this
+    const SILENCE_FLUSH_FRAMES = 6;   // ~1.5s silence after speech → flush
+
     processor.onaudioprocess = (e) => {
-      if (!activeRef.current || muted) return;
-      micBufferRef.current.push(float32ToInt16(e.inputBuffer.getChannelData(0)));
-      const total = micBufferRef.current.reduce((a, b) => a + b.length, 0);
-      if (total >= 16000) flushMic(); // flush every ~1 second
+      if (!activeRef.current) return;
+      const samples = e.inputBuffer.getChannelData(0);
+
+      // Simple RMS voice-activity check
+      let sum = 0;
+      for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+      const rms = Math.sqrt(sum / samples.length);
+
+      if (rms > RMS_THRESHOLD) {
+        // Voice detected — accumulate
+        silenceFramesRef.current = 0;
+        speechActiveRef.current = true;
+        micBufferRef.current.push(float32ToInt16(samples));
+        const total = micBufferRef.current.reduce((a, b) => a + b.length, 0);
+        if (total >= 16000 * 4) flushMic(); // safety flush after 4s of continuous speech
+      } else if (speechActiveRef.current) {
+        // In a silence run after speech
+        silenceFramesRef.current++;
+        if (silenceFramesRef.current >= SILENCE_FLUSH_FRAMES) {
+          // User stopped speaking — send what we have
+          speechActiveRef.current = false;
+          silenceFramesRef.current = 0;
+          flushMic();
+        }
+      }
     };
     source.connect(processor);
     processor.connect(ctx.destination);
@@ -191,6 +217,8 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
     stopTimer();
     playQueueRef.current = Promise.resolve();
     micBufferRef.current = [];
+    silenceFramesRef.current = 0;
+    speechActiveRef.current = false;
 
     wsRef.current?.close();
     wsRef.current = null;
