@@ -96,7 +96,43 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
     wsRef.current.send(buildWav(pcm, 16000));
   }
 
+  function speakFallback(text: string) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.05;
+    utter.pitch = 1.0;
+    // Prefer a female English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(
+      (v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("female")
+    ) || voices.find((v) => v.lang.startsWith("en")) || null;
+    if (preferred) utter.voice = preferred;
+    setStatusText(`${agentName} is speaking…`);
+    utter.onend = () => { if (activeRef.current) setStatusText("Listening…"); };
+    window.speechSynthesis.speak(utter);
+  }
+
+  const pendingTtsTextRef = useRef<string | null>(null);
+  const ttsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function expectAudioOrFallback(text: string) {
+    pendingTtsTextRef.current = text;
+    if (ttsTimerRef.current) clearTimeout(ttsTimerRef.current);
+    // If no audio bytes arrive within 2.5s, fall back to browser TTS
+    ttsTimerRef.current = setTimeout(() => {
+      if (pendingTtsTextRef.current) {
+        speakFallback(pendingTtsTextRef.current);
+        pendingTtsTextRef.current = null;
+      }
+    }, 2500);
+  }
+
   function playAudio(bytes: ArrayBuffer) {
+    // Cancel fallback timer — real audio arrived
+    if (ttsTimerRef.current) clearTimeout(ttsTimerRef.current);
+    pendingTtsTextRef.current = null;
+
     playQueueRef.current = playQueueRef.current.then(
       () =>
         new Promise<void>((resolve) => {
@@ -200,6 +236,7 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
           const msg = JSON.parse(e.data as string);
           if (msg.role && msg.text) {
             setTranscript((t) => [...t, { role: msg.role, text: msg.text }]);
+            if (msg.role === "assistant") expectAudioOrFallback(msg.text);
           }
         } catch { /* binary-only mode — transcript built client-side */ }
       }
@@ -219,6 +256,9 @@ export default function DemoCallModal({ businessId, agentName = "Maya", onClose 
     micBufferRef.current = [];
     silenceFramesRef.current = 0;
     speechActiveRef.current = false;
+    if (ttsTimerRef.current) clearTimeout(ttsTimerRef.current);
+    pendingTtsTextRef.current = null;
+    window.speechSynthesis?.cancel();
 
     wsRef.current?.close();
     wsRef.current = null;
