@@ -94,17 +94,6 @@ async def reschedule(appt_id: str, new_time: datetime):
 
 @router.get("/upcoming/{business_id}")
 async def upcoming(business_id: str, days: int = 14):
-    if business_id == "demo-biz":
-        from datetime import datetime, timedelta
-        now = datetime.utcnow()
-        return [
-            {"id": "demo-appt-1", "customer_name": "Priya Sharma", "service": "Haircut",
-             "scheduled_at": (now + timedelta(hours=3)).isoformat(), "status": "confirmed", "duration_minutes": 30},
-            {"id": "demo-appt-2", "customer_name": "Rahul Verma", "service": "Hair Color",
-             "scheduled_at": (now + timedelta(days=1, hours=2)).isoformat(), "status": "confirmed", "duration_minutes": 90},
-            {"id": "demo-appt-3", "customer_name": "Sneha Patel", "service": "Facial",
-             "scheduled_at": (now + timedelta(days=2)).isoformat(), "status": "confirmed", "duration_minutes": 45},
-        ]
     sb = get_supabase()
     now = datetime.utcnow()
     until = now + timedelta(days=days)

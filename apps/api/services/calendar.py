@@ -109,6 +109,25 @@ class CalendarService:
             except Exception:
                 logger.exception("Freebusy query failed")
 
+        # If no Google Calendar connected, use existing DB appointments as busy periods
+        if not busy and not (cal_id and business.get("google_calendar_access_token")):
+            try:
+                from models.database import get_supabase
+                sb = get_supabase()
+                day_start_iso = day_start.isoformat()
+                day_end_iso = day_end.isoformat()
+                res = sb.table("appointments").select("scheduled_at,duration_minutes") \
+                    .eq("business_id", business["id"]) \
+                    .gte("scheduled_at", day_start_iso) \
+                    .lte("scheduled_at", day_end_iso) \
+                    .execute()
+                for row in (res.data or []):
+                    appt_start = datetime.fromisoformat(row["scheduled_at"].replace("Z", "+00:00"))
+                    appt_end = appt_start + timedelta(minutes=row.get("duration_minutes", 30))
+                    busy.append({"start": appt_start.isoformat(), "end": appt_end.isoformat()})
+            except Exception:
+                logger.exception("DB busy-slot lookup failed; proceeding with no conflicts")
+
         available = []
         for slot in candidates:
             slot_end = slot + timedelta(minutes=duration)

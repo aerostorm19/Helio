@@ -17,7 +17,7 @@ import StatusBadge from "@/components/dashboard/StatusBadge";
 import { formatDuration, relativeTime } from "@/lib/utils";
 import {
   mockOverview, mockWeek, mockOutcomeBreakdown, mockHeatmap, mockLiveFeed,
-  mockTopFaqs, mockServicesBreakdown, mockUpcomingAppointments, mockRecentCalls, mockSparkline,
+  mockTopFaqs, mockServicesBreakdown, mockSparkline,
 } from "@/lib/mock";
 import { Sparkles, PhoneCall, Pause, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -35,8 +35,8 @@ export default function OverviewPage() {
   // Fallback to mock when backend offline so UI showcases full state.
   const m   = ov     ?? mockOverview();
   const w   = (week && week.length) ? week.map((d: any) => ({ ...d, label: d.date.slice(5) })) : mockWeek();
-  const recentCalls = (recent?.items?.length ? recent.items : mockRecentCalls()).slice(0, 6);
-  const upcomingList = upcoming?.length ? upcoming : mockUpcomingAppointments();
+  const recentCalls = (recent?.items ?? []).slice(0, 6);
+  const upcomingList = upcoming ?? [];
   const outcomes = mockOutcomeBreakdown();
   const heatmap  = mockHeatmap();
   const liveFeed = mockLiveFeed();

@@ -81,23 +81,28 @@ async def widget_stream(websocket: WebSocket, business_id: str):
 
     session = await session_service.create_widget_session(business)
 
-    # Skip DB call logging for demo
-    if business_id != "demo-biz":
-        sb = get_supabase()
-        call_row = (
-            sb.table("calls")
-            .insert(
-                {
-                    "business_id": business_id,
-                    "twilio_call_sid": session.call_sid,
-                    "call_direction": "inbound",
-                    "caller_number": "widget",
-                }
-            )
-            .execute()
-        ).data[0]
-        session.call_id = call_row["id"]
-        await session_service.update_session(session)
+    # Create a real calls row for any business that exists in the DB
+    db_business_id = business["id"] if business_id == "demo-biz" else business_id
+    if db_business_id != "demo-biz":
+        try:
+            sb = get_supabase()
+            call_row = (
+                sb.table("calls")
+                .insert(
+                    {
+                        "business_id": db_business_id,
+                        "twilio_call_sid": session.call_sid,
+                        "call_direction": "inbound",
+                        "caller_number": "widget",
+                    }
+                )
+                .execute()
+            ).data[0]
+            session.call_id = call_row["id"]
+            session.business_id = db_business_id
+            await session_service.update_session(session)
+        except Exception:
+            logger.exception("Widget call DB row creation failed; continuing without DB logging")
 
     greeting = (
         business.get("greeting_message")
@@ -152,7 +157,7 @@ async def widget_stream(websocket: WebSocket, business_id: str):
     except Exception:
         logger.exception("Widget stream failed")
     finally:
-        if business_id != "demo-biz" and session.call_id:
+        if session.call_id and session.call_id != session.call_sid:
             try:
                 sb = get_supabase()
                 sb.table("calls").update(

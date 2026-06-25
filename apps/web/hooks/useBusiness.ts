@@ -56,7 +56,16 @@ const DEMO: Business = {
 
 export function useBusiness() {
   return useSWR<Business | null>("current-business", async () => {
-    // Demo mode — always return DEMO business
-    return DEMO;
+    const supabase = createBrowserSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return DEMO;
+
+    const { data } = await supabase
+      .from("businesses")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    return (data as Business) ?? DEMO;
   });
 }

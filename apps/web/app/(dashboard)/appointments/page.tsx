@@ -6,13 +6,12 @@ import { useBusiness } from "@/hooks/useBusiness";
 import { useAppointments } from "@/hooks/useAppointments";
 import AppointmentCalendar from "@/components/dashboard/AppointmentCalendar";
 import { api } from "@/lib/api";
-import { mockUpcomingAppointments } from "@/lib/mock";
 import { CalendarDays, MessageCircle, Mail, Phone } from "lucide-react";
 
 export default function AppointmentsPage() {
   const { data: business } = useBusiness();
   const { data: backend, mutate } = useAppointments(business?.id);
-  const appts = backend?.length ? backend : mockUpcomingAppointments();
+  const appts = backend ?? [];
   const [selected, setSelected] = useState<Date>(new Date());
 
   const day = useMemo(
