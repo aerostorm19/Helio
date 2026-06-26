@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/lib/supabase/client";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -16,12 +15,15 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createBrowserSupabase();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Demo mode: no backend auth. Store identity locally and proceed.
+    localStorage.setItem("helio.demo.email", email);
+
     setLoading(false);
-    if (error) return setError(error.message);
+    // If they already onboarded a business, go to dashboard; otherwise onboard.
+    const hasBusiness = typeof window !== "undefined" && localStorage.getItem("helio.business");
     const params = new URLSearchParams(window.location.search);
-    router.push(params.get("next") || "/overview");
+    router.push(params.get("next") || (hasBusiness ? "/overview" : "/onboard"));
   }
 
   return (

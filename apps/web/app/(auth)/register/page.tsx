@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/lib/supabase/client";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -17,20 +16,8 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
-    // Store demo identity so onboard finish can use it
+    // Demo mode: no backend auth. Store identity locally and proceed.
     localStorage.setItem("helio.demo.email", email);
-
-    try {
-      const supabase = createBrowserSupabase();
-      const { error } = await supabase.auth.signUp({ email, password });
-      // Ignore "email not confirmed" — proceed anyway for demo
-      if (error && !error.message.toLowerCase().includes("confirm")) {
-        throw error;
-      }
-    } catch (err: any) {
-      // Non-fatal: fall through to demo mode
-      console.warn("Supabase signup:", err?.message);
-    }
 
     setLoading(false);
     router.push("/onboard");
