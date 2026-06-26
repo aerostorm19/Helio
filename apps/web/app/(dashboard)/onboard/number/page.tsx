@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { mutate } from "swr";
 import OnboardStepper from "@/components/onboard/OnboardStepper";
 
 export default function OnboardNumber() {
@@ -68,6 +69,9 @@ export default function OnboardNumber() {
       localStorage.setItem("helio.business", JSON.stringify(business));
       sessionStorage.removeItem("helio.onboard.step1");
       sessionStorage.removeItem("helio.onboard.faqs");
+
+      // Bust the SWR cache so /overview re-reads from localStorage
+      await mutate("current-business", business, { revalidate: false });
 
       router.push("/overview");
     } catch (e: any) {
