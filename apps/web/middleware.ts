@@ -5,11 +5,6 @@ const PUBLIC_PATHS = ["/login", "/register"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Root → start of the demo flow
-  if (pathname === "/") {
-    return NextResponse.redirect(new URL("/register", request.url));
-  }
-
   // Allow public paths and static assets through
   if (
     PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
