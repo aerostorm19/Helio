@@ -23,6 +23,14 @@ export default function AppointmentsPage() {
   const total = appts.length;
   const today = appts.filter((a: any) => isSameDay(new Date(a.scheduled_at), new Date())).length;
 
+  const channels = useMemo(() => {
+    const wa = appts.filter((a: any) => a.confirmation_channel === "whatsapp").length;
+    const email = appts.filter((a: any) => a.confirmation_channel === "email").length;
+    const none = total - wa - email;
+    const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+    return { wa: pct(wa), email: pct(email), none: pct(none) };
+  }, [appts, total]);
+
   async function cancel(id: string) {
     if (id.startsWith("mock")) return;
     await api.cancel(id);
@@ -48,9 +56,9 @@ export default function AppointmentsPage() {
 
           <div className="panel p-5">
             <div className="text-sm font-medium mb-3">By channel</div>
-            <Bar label="WhatsApp" pct={64} color="bg-helio" />
-            <Bar label="Email"    pct={24} color="bg-blue-400" />
-            <Bar label="None"     pct={12} color="bg-helio-edge" />
+            <Bar label="WhatsApp" pct={channels.wa} color="bg-helio" />
+            <Bar label="Email"    pct={channels.email} color="bg-blue-400" />
+            <Bar label="None"     pct={channels.none} color="bg-helio-edge" />
           </div>
         </div>
 

@@ -5,16 +5,13 @@ import { useBusiness } from "@/hooks/useBusiness";
 import { useCallLogs } from "@/hooks/useCallLogs";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import { mockRecentCalls } from "@/lib/mock";
+import { isShowcaseBusiness } from "@/lib/demo";
 import { formatDuration, relativeTime } from "@/lib/utils";
-import { Search, Download, Phone } from "lucide-react";
+import { Search, Download, Phone, PhoneIncoming } from "lucide-react";
 
-const FILTERS = [
-  { value: "all",          label: "All",        count: 427 },
-  { value: "booked",       label: "Booked",     count: 312 },
-  { value: "faq_answered", label: "FAQ",        count: 76 },
-  { value: "escalated",    label: "Escalated",  count: 18 },
-  { value: "missed",       label: "Missed",     count: 21 },
-];
+const SHOWCASE_COUNTS: Record<string, number> = {
+  all: 427, booked: 312, faq_answered: 76, escalated: 18, missed: 21,
+};
 
 export default function CallsPage() {
   const { data: business } = useBusiness();
@@ -23,12 +20,27 @@ export default function CallsPage() {
   const [q, setQ] = useState("");
   const { data } = useCallLogs(business?.id, page, filter);
 
+  const showcase = isShowcaseBusiness(business);
+
+  const FILTERS = [
+    { value: "all",          label: "All" },
+    { value: "booked",       label: "Booked" },
+    { value: "faq_answered", label: "FAQ" },
+    { value: "escalated",    label: "Escalated" },
+    { value: "missed",       label: "Missed" },
+  ].map((f) => ({ ...f, count: showcase ? SHOWCASE_COUNTS[f.value] : 0 }));
+
   const calls = useMemo(() => {
-    const base = data?.items?.length ? data.items : [...mockRecentCalls(), ...mockRecentCalls().map((c, i) => ({ ...c, id: c.id + "-b" + i }))];
+    // Real users start with no calls; the canned demo shows mock history.
+    const base = data?.items?.length
+      ? data.items
+      : showcase
+        ? [...mockRecentCalls(), ...mockRecentCalls().map((c, i) => ({ ...c, id: c.id + "-b" + i }))]
+        : [];
     const filtered = filter === "all" ? base : base.filter((c: any) => c.outcome === filter);
     if (!q) return filtered;
     return filtered.filter((c: any) => (c.caller_name + " " + c.caller_number).toLowerCase().includes(q.toLowerCase()));
-  }, [data, filter, q]);
+  }, [data, filter, q, showcase]);
 
   return (
     <div className="space-y-6">
@@ -91,7 +103,21 @@ export default function CallsPage() {
             </div>
           </a>
         ))}
-        {calls.length === 0 && <div className="p-8 text-center text-helio-mute text-sm">No matches.</div>}
+        {calls.length === 0 && (
+          <div className="flex flex-col items-center justify-center text-center py-16">
+            <div className="h-12 w-12 rounded-xl bg-helio-surface grid place-items-center mb-3">
+              <PhoneIncoming className="h-6 w-6 text-helio-mute" />
+            </div>
+            <div className="text-sm font-medium">
+              {q || filter !== "all" ? "No matching calls" : "No calls yet"}
+            </div>
+            <p className="text-xs text-helio-mute mt-1 max-w-xs">
+              {q || filter !== "all"
+                ? "Try a different search or filter."
+                : `When ${business?.agent_name || "Maya"} answers a call, it’ll appear here with a full transcript.`}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-sm text-helio-mute">

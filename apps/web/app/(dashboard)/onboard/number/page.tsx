@@ -20,6 +20,7 @@ export default function OnboardNumber() {
       const faqs: { question: string; answer: string }[] = JSON.parse(
         sessionStorage.getItem("helio.onboard.faqs") || "[]"
       );
+      const calendarConnected = sessionStorage.getItem("helio.onboard.calendar") === "connected";
 
       // Persist business locally so dashboard picks it up without a backend
       const business = {
@@ -57,10 +58,10 @@ export default function OnboardNumber() {
         whatsapp_number: null,
         meta_waba_id: null,
         meta_phone_number_id: null,
-        google_calendar_id: null,
+        google_calendar_id: calendarConnected ? "primary" : null,
         google_calendar_access_token: null,
         google_calendar_refresh_token: null,
-        google_calendar_token_expiry: null,
+        google_calendar_token_expiry: calendarConnected ? new Date(Date.now() + 3600_000).toISOString() : null,
         country_code: "IN",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -69,6 +70,7 @@ export default function OnboardNumber() {
       localStorage.setItem("helio.business", JSON.stringify(business));
       sessionStorage.removeItem("helio.onboard.step1");
       sessionStorage.removeItem("helio.onboard.faqs");
+      sessionStorage.removeItem("helio.onboard.calendar");
 
       // Bust the SWR cache so /overview re-reads from localStorage
       await mutate("current-business", business, { revalidate: false });

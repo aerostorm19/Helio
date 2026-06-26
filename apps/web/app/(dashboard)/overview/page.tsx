@@ -22,6 +22,8 @@ import {
 import { Sparkles, PhoneCall, Pause, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import DemoCallModal from "@/components/dashboard/DemoCallModal";
+import { isShowcaseBusiness } from "@/lib/demo";
+import NewUserOverview from "@/components/dashboard/NewUserOverview";
 
 export default function OverviewPage() {
   const { data: business } = useBusiness();
@@ -31,6 +33,12 @@ export default function OverviewPage() {
   const { data: week }   = useSWR(id ? ["week", id] : null,     () => api.weekStats(id!));
   const { data: recent } = useSWR(id ? ["recent", id] : null,   () => api.callHistory(id!, 1));
   const { data: upcoming } = useSWR(id ? ["upcoming", id] : null, () => api.upcoming(id!));
+
+  // New users (onboarded their own business) get a fresh zero-state dashboard.
+  // The canned "View live dashboard" demo (id "demo-biz") keeps the rich showcase.
+  if (business && !isShowcaseBusiness(business)) {
+    return <NewUserOverview business={business} />;
+  }
 
   // Fallback to mock when backend offline so UI showcases full state.
   const m   = ov     ?? mockOverview();

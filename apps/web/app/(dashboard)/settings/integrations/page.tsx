@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useBusiness } from "@/hooks/useBusiness";
-import { api } from "@/lib/api";
+import { markCalendarConnected, updateLocalBusiness } from "@/lib/demo";
 
 export default function IntegrationsPage() {
   const { data: business, mutate } = useBusiness();
@@ -11,65 +11,35 @@ export default function IntegrationsPage() {
   const [availableNumbers, setAvailableNumbers] = useState<string[]>([]);
   const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
 
-  // Listen for Google Calendar redirect callback code
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (code && business?.id) {
-      setLoadingCalendar(true);
-      // Clean query params
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/business/${business.id}/calendar/connect?code=${encodeURIComponent(code)}`, {
-        method: "POST",
-      })
-        .then((res) => {
-          if (res.ok) mutate();
-        })
-        .catch(console.error)
-        .finally(() => setLoadingCalendar(false));
-    }
-  }, [business?.id]);
-
   function connectCalendar() {
-    const client_id = "469334427023-86e5rsjup7mu1aqc7ggh6q1evo1oiqbb.apps.googleusercontent.com";
-    const redirect_uri = `${window.location.origin}/settings/integrations`;
-    const scope = "https://www.googleapis.com/auth/calendar";
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
+    setLoadingCalendar(true);
+    // Demo mode: simulate the OAuth round-trip and mark connected locally.
+    setTimeout(() => {
+      const updated = markCalendarConnected();
+      if (updated) mutate(updated, { revalidate: false });
+      setLoadingCalendar(false);
+    }, 1200);
   }
 
   async function loadAvailableNumbers() {
     if (!business?.id) return;
     setLoadingNumbers(true);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/business/${business.id}/phone-numbers`);
-      if (res.ok) {
-        const data = await res.json();
-        setAvailableNumbers(data.numbers || []);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
+    // Demo mode: offer a few sample Indian numbers to "buy".
+    setTimeout(() => {
+      setAvailableNumbers(["+91 20 6900 1234", "+91 20 6900 5678", "+91 22 4800 9012"]);
       setLoadingNumbers(false);
-    }
+    }, 900);
   }
 
   async function buyNumber(num: string) {
     if (!business?.id) return;
     setBuyingNumber(num);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/business/${business.id}/phone-numbers/buy?phone_number=${encodeURIComponent(num)}`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        mutate();
-        setAvailableNumbers([]);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
+    setTimeout(() => {
+      const updated = updateLocalBusiness({ twilio_phone_number: num });
+      if (updated) mutate(updated, { revalidate: false });
+      setAvailableNumbers([]);
       setBuyingNumber(null);
-    }
+    }, 900);
   }
 
   const embed = business
@@ -118,13 +88,9 @@ export default function IntegrationsPage() {
 
       <Card title="WhatsApp Business" status={business?.meta_phone_number_id ? "Connected" : "Not connected"}>
         <p className="text-sm text-helio-mute">Send booking confirmations via WhatsApp.</p>
-        <button className="btn-primary mt-3" onClick={async () => {
-          if (!business?.id) return;
-          // Connect placeholder for testing
-          await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/business/${business.id}/whatsapp/connect?waba_id=12345&phone_number_id=67890`, {
-            method: "POST"
-          });
-          mutate();
+        <button className="btn-primary mt-3" onClick={() => {
+          const updated = updateLocalBusiness({ meta_phone_number_id: "demo-wa", whatsapp_number: business?.phone || null });
+          if (updated) mutate(updated, { revalidate: false });
         }}>Connect WhatsApp</button>
       </Card>
 
