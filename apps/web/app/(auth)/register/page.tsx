@@ -16,10 +16,23 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createBrowserSupabase();
-    const { error } = await supabase.auth.signUp({ email, password });
+
+    // Store demo identity so onboard finish can use it
+    localStorage.setItem("helio.demo.email", email);
+
+    try {
+      const supabase = createBrowserSupabase();
+      const { error } = await supabase.auth.signUp({ email, password });
+      // Ignore "email not confirmed" — proceed anyway for demo
+      if (error && !error.message.toLowerCase().includes("confirm")) {
+        throw error;
+      }
+    } catch (err: any) {
+      // Non-fatal: fall through to demo mode
+      console.warn("Supabase signup:", err?.message);
+    }
+
     setLoading(false);
-    if (error) return setError(error.message);
     router.push("/onboard");
   }
 

@@ -54,18 +54,38 @@ const DEMO: Business = {
   updated_at: new Date().toISOString(),
 };
 
+const REAL_BUSINESS_ID = "b1000000-0000-0000-0000-000000000001";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
 export function useBusiness() {
   return useSWR<Business | null>("current-business", async () => {
-    const supabase = createBrowserSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return DEMO;
+    // 1. Try logged-in user's business from Supabase
+    try {
+      const supabase = createBrowserSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("businesses")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+        if (data) return data as Business;
+      }
+    } catch { /* fall through */ }
 
-    const { data } = await supabase
-      .from("businesses")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
+    // 2. Use business saved during onboarding (localStorage demo mode)
+    try {
+      const stored = localStorage.getItem("helio.business");
+      if (stored) return JSON.parse(stored) as Business;
+    } catch { /* fall through */ }
 
-    return (data as Business) ?? DEMO;
+    // 3. Try real API business
+    try {
+      const res = await fetch(`${API_BASE}/business/${REAL_BUSINESS_ID}`);
+      if (res.ok) return await res.json() as Business;
+    } catch { /* fall through */ }
+
+    // 4. Absolute fallback — canned demo
+    return DEMO;
   });
 }
