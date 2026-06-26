@@ -54,7 +54,6 @@ const DEMO: Business = {
   updated_at: new Date().toISOString(),
 };
 
-const REAL_BUSINESS_ID = "b1000000-0000-0000-0000-000000000001";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export function useBusiness() {
@@ -70,6 +69,12 @@ export function useBusiness() {
           .eq("user_id", user.id)
           .single();
         if (data) return data as Business;
+
+        // User is logged in but no Supabase business → try Railway by user id
+        try {
+          const res = await fetch(`${API_BASE}/business/user/${user.id}`);
+          if (res.ok) return await res.json() as Business;
+        } catch { /* fall through */ }
       }
     } catch { /* fall through */ }
 
@@ -79,13 +84,7 @@ export function useBusiness() {
       if (stored) return JSON.parse(stored) as Business;
     } catch { /* fall through */ }
 
-    // 3. Try real API business
-    try {
-      const res = await fetch(`${API_BASE}/business/${REAL_BUSINESS_ID}`);
-      if (res.ok) return await res.json() as Business;
-    } catch { /* fall through */ }
-
-    // 4. Absolute fallback — canned demo
+    // 3. Canned demo — no real account or onboarding data found
     return DEMO;
   });
 }
